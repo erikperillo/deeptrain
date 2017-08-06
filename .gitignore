@@ -1,0 +1,12 @@
+#ignore all
+*
+#unignore all with extensions
+!*.*
+#unignore all dirs
+!*/
+
+#other stuff
+__pycache__/
+config/
+*.pyc
+*.pyo
