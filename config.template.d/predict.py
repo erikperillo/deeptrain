@@ -46,3 +46,5 @@ pre_proc_args_dict = train.pre_proc_args_dict
 
 #dictionary of arguments for dataproc.load method
 load_args_dict = train.load_args_dict
+
+pred_stride = 32
