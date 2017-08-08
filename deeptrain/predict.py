@@ -41,7 +41,7 @@ import config.predict as cfg
 
 def predict(x, pred_f):
     x = x.reshape((1, ) + x.shape)
-    x = dataproc.pre_proc(x, **cfg.pre_proc_args_dict)
+    x = dataproc.pre_proc(x, **cfg.pre_proc_kwargs)
 
     start_time = time.time()
     y = pred_f(x)
@@ -82,7 +82,19 @@ def stride_predict(img, shape, stride, pred_f):
 
     return pred, tot_pred_time, avg_pred_time
 
+def get_rgb(x):
+    #b = x[1]
+    #g = x[2]
+    #r = x[3]
+    r = x[0]
+    g = x[1]
+    b = x[2]
+    rgb = np.dstack((r, g, b)).astype("uint8")
+    return rgb
+
 def main():
+    random.seed(42)
+
     if cfg.input_filepaths is None:
         if len(sys.argv) < 2:
             print("usage: {} <filepath_or_dir_of_inputs>".format(sys.argv[0]))
@@ -94,7 +106,7 @@ def main():
 
     if isinstance(input_fps, str):
         input_fps = [input_fps]
-    input_fps = input_fps[:200]
+    random.shuffle(input_fps)
 
     #input
     inp = T.tensor4("inp")
@@ -110,14 +122,18 @@ def main():
     if not os.path.isdir(cfg.preds_save_dir):
         os.makedirs(cfg.preds_save_dir)
 
+    indexes = None
     #iterating over images doing predictions
     for i, fp in enumerate(input_fps):
         print("in image {}".format(fp))
 
-        x, y = dataproc.load(fp, **cfg.load_args_dict)
+        x, y = dataproc.load(fp, **cfg.load_kwargs)
+
+        #getting rgb image
+        rgb = get_rgb(x)
 
         print("\tpredicting...")
-        print("x shape:", x.shape)
+        print("\tx shape:", x.shape)
         pred, tot_pred_time, avg_pred_time = stride_predict(x,
             model.Model.INPUT_SHAPE[-2:], cfg.pred_stride, pred_f)
         print("\tdone predicting. took %.6f seconds (%.6f avg)" %\
@@ -125,23 +141,48 @@ def main():
         print("\tpred shape:", pred.shape)
 
         if cfg.preds_csv_fp is not None:
-            preds = np.append(preds, pred.flatten())
+            #getting indexes
+            if indexes is None:
+                pts_per_img = pred.size
+                if cfg.max_pred_points is not None:
+                    pts_per_img = min(cfg.max_pred_points//len(input_fps),
+                        pts_per_img)
+                indexes = list(range(pts_per_img))
+
+            random.shuffle(indexes)
+            preds = np.append(preds, pred.flatten()[indexes])
             print("\tpreds csv shape:", preds.shape)
-            trues = np.append(trues, y.flatten().astype("float32"))
+            trues = np.append(trues, y.flatten()[indexes])
 
         if i < cfg.max_n_preds_save:
+            name = ".".join(os.path.basename(fp).split(".")[:-1])
+            print("name:", name)
             #saving prediction
             _pred = (255*pred).astype("uint8")
             pred_fp = os.path.join(cfg.preds_save_dir,
-                "{}_prob.png".format(i))
+                #"{}_prob.png".format(i))
+                "{}_prob.png".format(name))
             io.imsave(pred_fp, _pred)
+
+            if cfg.thr is not None:
+                _pred = (pred >= cfg.thr).astype("uint8")
+                pred_fp = os.path.join(cfg.preds_save_dir,
+                    "{}_pred.png".format(name))
+                io.imsave(pred_fp, _pred*255)
 
             #saving ground-truth
             gt = (255*y).astype("uint8")
             gt = gt.reshape(gt.shape[-2:])
             gt_fp = os.path.join(cfg.preds_save_dir,
-                "{}_gt.png".format(i))
+                #"{}_gt.png".format(i))
+                "{}_gt.png".format(name))
             io.imsave(gt_fp, gt)
+
+            #saving rgb image
+            rgb_fp = os.path.join(cfg.preds_save_dir,
+                #"{}_rgb.png".format(i))
+                "{}_rgb.png".format(name))
+            io.imsave(rgb_fp, rgb)
 
     #saving predictions
     if cfg.preds_csv_fp is not None:

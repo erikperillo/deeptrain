@@ -24,43 +24,30 @@ IN THE SOFTWARE.
 
 import os
 import glob
-import numpy as np
 
-_data_dir_path = "/home/erik/proj/att/att/deep/data"
+from . import train
 
-#if not None, uses weights of a pre-trained model from path
-pre_trained_model_fp = "/home/erik/proj/att/att/deep/data/train_696/model.npz"
+_data_dir_path = "/home/erik/data/"
+#filepath of mode
+model_filepath = "/home/erik/data/train/train_25/model_epoch_3.npz"
 
-#directory where dir with train info/model will be stored
-output_dir_basedir = _data_dir_path
+#filepath or filepaths of input. may be None, in this case reads from argv
+input_filepaths = glob.glob("/home/erik/data/sao_martinho/farms/*/tensor.npz")
 
-#filepaths of train batches
-dataset_train_filepaths = glob.glob("/home/erik/imgs_train/*[^0123456789].npz")
-#filepaths of validation batches, can be None
-dataset_val_filepaths = glob.glob("/home/erik/imgs_val/*.npz")
-
-#number of epochs to use in train
-n_epochs = 8
-#batch size
-batch_size = 10
-#0 for nothing, 1 for only warnings, 2 for everything
-verbose = 2
-#validation function value tolerance
-val_f_val_tol = None
-#data types
-x_dtype = np.float32
-y_dtype = np.float32
-
-#chunk size to load data
-load_chunk_size = 4000
+#maximum number of prediction images to save
+max_n_preds_save = 300
+#directory to save predictions
+preds_save_dir = "/home/erik/data/preds"
+#filepath to save predictions probabilities. if None, does not save anything
+preds_csv_fp = "/home/erik/data/preds.csv"
+#maximum number of prediction points to have in pred csv. can be None
+max_pred_points = 10**7
 
 #dictionary of arguments for dataproc.pre_proc method
-pre_proc_args_dict = {
-    "stats_fp": "/home/erik/imgs_train_stats.json"
-}
+pre_proc_kwargs = train.batches_gen_kwargs["pre_proc_kwargs"]
 
 #dictionary of arguments for dataproc.load method
-load_args_dict = {
-    "x_dtype": x_dtype,
-    "y_dtype": y_dtype
-}
+load_kwargs = train.batches_gen_kwargs["load_kwargs"]
+
+#stride for stride prediction
+pred_stride = 64

@@ -1,1 +1,1 @@
-framework for training convnets
+framework for training/evaluating DL models

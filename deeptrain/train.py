@@ -85,36 +85,39 @@ def main():
     #creating logging object
     log = util.Tee([sys.stdout, open(os.path.join(out_dir, "train.log"), "w")])
 
-    def save_model(epoch):
-        model_path = os.path.join(out_dir, "model_epoch_{}.npz".format(epoch))
-        net_model.save_net(model_path)
+    #function to update learning rate
+    def update_learning_rate(epoch):
+        old_lr, new_lr = net_model.update_learning_rate()
+        print("updated learning rate:", old_lr, "->", new_lr)
 
+    #function to save model
+    def save_model(epoch):
+        model_fp = os.path.join(out_dir, "model_epoch_{}.npz".format(epoch))
+        print("saving after-epoch model to '{}'".format(model_fp))
+        net_model.save_net(model_fp)
+
+    #main train loop
     print("calling train loop")
     try:
         trloop.train_loop(
             tr_set=cfg.dataset_train_filepaths,
             tr_f=train_fn,
             n_epochs=cfg.n_epochs,
-            batch_size=cfg.batch_size,
             val_set=cfg.dataset_val_filepaths,
             val_f=val_fn,
-            val_f_val_tol=cfg.val_f_val_tol,
-            load_chunk_size=cfg.load_chunk_size,
-            load_args_dict=cfg.load_args_dict,
-            pre_proc_args_dict=cfg.pre_proc_args_dict,
+            batches_gen_kwargs=cfg.batches_gen_kwargs,
             verbose=cfg.verbose,
             save_model_after_epoch_f=save_model,
+            update_learning_rate_f=update_learning_rate,
             print_f=log.print)
     except KeyboardInterrupt:
         print("Keyboard Interrupt event.")
 
-    print("end.")
-
     model_path = os.path.join(out_dir, "model.npz")
-    print("saving model to '{}'".format(model_path))
+    print("saving model to '{}'".format(model_path), flush=True)
     net_model.save_net(model_path)
 
-    print("\ndone.")
+    print("\ndone.", flush=True)
 
 if __name__ == '__main__':
     main()
