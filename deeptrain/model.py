@@ -22,6 +22,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
+"""
+Module for representing Tensorflow/keras meta-models.
+"""
+
 import tensorflow as tf
 from tensorflow.contrib import keras
 from tensorflow.examples.tutorials.mnist import input_data
