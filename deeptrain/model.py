@@ -30,6 +30,9 @@ import shutil
 import os
 
 def get_param_from_coll(coll_key, index=0, max_coll_size=1, graph=None):
+    """
+    Gets index'th parameter from collection 'coll_key' in graph.
+    """
     graph = tf.get_default_graph() if graph is None else graph
     coll = graph.get_collection(coll_key)
     assert max_coll_size is None or len(coll) <= max_coll_size
@@ -37,6 +40,9 @@ def get_param_from_coll(coll_key, index=0, max_coll_size=1, graph=None):
     return obj
 
 def save(sess, save_dir, overwrite=False, **builder_kwargs):
+    """
+    Saves metagraph and weights of current session into directory save_dir.
+    """
     if not "tags" in builder_kwargs:
         builder_kwargs["tags"] = []
     if os.path.isdir(save_dir):
@@ -49,11 +55,18 @@ def save(sess, save_dir, overwrite=False, **builder_kwargs):
     builder.save()
 
 def load(sess, save_dir, **builder_kwargs):
+    """
+    Loads metagraph and weights to current session from data in save_dir.
+    """
     if not "tags" in builder_kwargs:
         builder_kwargs["tags"] = []
     tf.saved_model.loader.load(sess, export_dir=save_dir, **builder_kwargs)
 
 class MetaModel:
+    """
+    This class contains meta-information about arbitrary models.
+    It builds the tensorflow graph and saves important data for later loading.
+    """
     NAME = "model"
 
     PARAMS_KEYS = {
@@ -71,10 +84,26 @@ class MetaModel:
         return "/".join([MetaModel.NAME, "params", param_name])
 
     def __init__(self, build_graph_fn):
+        """
+        Initialization of metamodel.
+        build_graph_fn is a function that must return a dictionary with values
+            for all keys in MetaModel.PARAMS_KEYS.
+        Every value except for metrics is a tensorflow op/tensor of the graph:
+            x: input tensor.
+            y_pred: output tensor, prediction
+            y_true: placeholder for true data to be used for comparisons.
+            loss: loss function to be optimized during training.
+            update: op used to update parameters during training.
+            learning_phase: tensor that is 1 iff it's training phase.
+            metrics: a dict in format metric_name: metric_tensor.
+        """
         self.params = {}
         self.build_graph_fn = build_graph_fn
 
     def build_graph(self, pre_graph=tf.Graph()):
+        """
+        Calls build_graph_fn and returns built graph.
+        """
         graph = tf.get_default_graph() if pre_graph is None else pre_graph
         with graph.as_default():
             self.params = self.build_graph_fn()
@@ -82,6 +111,11 @@ class MetaModel:
         return graph
 
     def mk_params_colls(self, graph=None):
+        """
+        Makes parameters collections in the given graph for model parameters.
+        Each parameter is stored in a different collection.
+        Parameters can then be further retrieved for retraining/prediction.
+        """
         graph = tf.get_default_graph() if graph is None else graph
         coll_keys = set(graph.get_all_collection_keys())
 
@@ -100,6 +134,10 @@ class MetaModel:
             tf.add_to_collection(coll_key, p)
 
     def set_params_from_colls(self, graph=None):
+        """
+        Sets tensors/ops from collections contained in graph, saved using
+            the method 'mk_params_colls'.
+        """
         graph = tf.get_default_graph() if graph is None else graph
 
         #getting default parameters
@@ -115,6 +153,9 @@ class MetaModel:
                 self.params["metrics"][k] = get_param_from_coll(k, graph=graph)
 
     def get_train_fn(self, sess):
+        """
+        Gets train function.
+        """
         def train_fn(x, y_true):
             __, loss = sess.run([self.params["update"], self.params["loss"]],
                 feed_dict={
@@ -126,6 +167,9 @@ class MetaModel:
         return train_fn
 
     def get_test_fn(self, sess):
+        """
+        Gets test function.
+        """
         def test_fn(x, y_true):
             metrics = sess.run(list(self.params["metrics"].values()),
                 feed_dict={
@@ -137,6 +181,9 @@ class MetaModel:
         return test_fn
 
     def get_pred_fn(self, sess):
+        """
+        Gets prediction function.
+        """
         def pred_fn(x):
             pred = sess.run(self.params["y_pred"],
                 feed_dict={
