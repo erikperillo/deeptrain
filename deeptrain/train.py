@@ -24,17 +24,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-import theano.tensor as T
-import theano
-import numpy as np
-import shutil
-import sys
+import tensorflow as tf
 import os
+import sys
+import shutil
 
+import model
 import trloop
+import config as conf
 import util
-import config.train as cfg
-import config.model as model
 
 def mk_output_dir(base_dir, pattern="train"):
     """
@@ -49,10 +47,10 @@ def populate_output_dir(out_dir):
     """
     Populates outout dir with info files.
     """
-    #copying model generator file to dir
-    shutil.copy(model.__file__, os.path.join(out_dir, "model.py"))
-    #copying this file to dir
-    shutil.copy(cfg.__file__, os.path.join(out_dir, "config.py"))
+    #copying config file to dir
+    shutil.copy(conf.__file__, os.path.join(out_dir, "config.py"))
+    #creating dir to store model weights
+    os.makedirs(os.path.join(out_dir, "checkpoints"))
     #info file
     with open(os.path.join(out_dir, "info.txt"), "w") as f:
         print("date created (y-m-d):", util.date_str(), file=f)
@@ -60,62 +58,82 @@ def populate_output_dir(out_dir):
         print("git commit hash:", util.git_hash(), file=f)
 
 def main():
-    #theano variables for inputs and targets
-    input_var = T.tensor4("inputs", dtype="floatX")
-    target_var = T.tensor4("targets", dtype="floatX")
-
-    out_dir = mk_output_dir(cfg.output_dir_basedir)
-    print("created output dir '%s'..." % out_dir)
+    out_dir = mk_output_dir(conf.train["out_dir_basedir"])
+    print("created output dir '{}'".format(out_dir))
     populate_output_dir(out_dir)
 
-    #neural network model
-    print("building network...", flush=True)
-    if cfg.pre_trained_model_fp is not None:
-        print("loading pre-trained model from '%s'" % cfg.pre_trained_model_fp,
-            flush=True)
-    net_model = model.Model(input_var, target_var, cfg.pre_trained_model_fp)
-
-    print("compiling functions...", flush=True)
-    #compiling function performing a training step on a mini-batch (by giving
-    #the updates dictionary) and returning the corresponding training loss
-    train_fn = net_model.train_fn
-    #second function computing the validation loss and accuracy:
-    val_fn = net_model.val_fn
+    #meta-model
+    meta_model = model.MetaModel(conf.model["build_graph_fn"])
 
     #creating logging object
     log = util.Tee([sys.stdout, open(os.path.join(out_dir, "train.log"), "w")])
 
-    #function to update learning rate
-    def update_learning_rate(epoch):
-        old_lr, new_lr = net_model.update_learning_rate()
-        print("updated learning rate:", old_lr, "->", new_lr)
+    #building graph
+    if conf.train["pre_trained_model_path"] is None:
+        log.print("[info] building graph for the first time")
+        graph = meta_model.build_graph()
+    else:
+        graph = tf.Graph()
 
-    #function to save model
-    def save_model(epoch):
-        model_fp = os.path.join(out_dir, "model_epoch_{}.npz".format(epoch))
-        print("saving after-epoch model to '{}'".format(model_fp))
-        net_model.save_net(model_fp)
+    #training session
+    with tf.Session(graph=graph) as sess:
+        #if first time training, creates graph collections for model params
+        #else, loads model weights and params from collections
+        if conf.train["pre_trained_model_path"] is None:
+            sess.run(tf.global_variables_initializer())
+            meta_model.mk_params_colls(graph=graph)
+        else:
+            log.print("[info] loading graph/weights from '{}'".format(
+                conf.train["pre_trained_model_path"]))
+            model.load(sess, conf.train["pre_trained_model_path"])
+            meta_model.set_params_from_colls(graph=graph)
 
-    #main train loop
-    print("calling train loop")
-    try:
-        trloop.train_loop(
-            tr_set=cfg.dataset_train_filepaths,
-            tr_f=train_fn,
-            n_epochs=cfg.n_epochs,
-            val_set=cfg.dataset_val_filepaths,
-            val_f=val_fn,
-            batches_gen_kwargs=cfg.batches_gen_kwargs,
-            verbose=cfg.verbose,
-            save_model_after_epoch_f=save_model,
-            update_learning_rate_f=update_learning_rate,
-            print_f=log.print)
-    except KeyboardInterrupt:
-        print("Keyboard Interrupt event.")
+        #building functions
+        #train function: cumputes loss
+        train_fn = meta_model.get_train_fn(sess)
 
-    model_path = os.path.join(out_dir, "model.npz")
-    print("saving model to '{}'".format(model_path), flush=True)
-    net_model.save_net(model_path)
+        #test function: returns a dict with pairs metric_name: metric_value
+        _test_fn = meta_model.get_test_fn(sess)
+        def test_fn(x, y_true):
+            metrics_values = _test_fn(x, y_true)
+            return {
+                k: m for k, m in zip(
+                    meta_model.params["metrics"].keys(), metrics_values)
+            }
+
+        #save model function: given epoch and iteration number, saves checkpoint
+        def save_model_fn(epoch, it):
+            path = os.path.join(out_dir, "checkpoints",
+                "epoch-{}_it-{}".format(epoch, it))
+            model.save(sess, path, overwrite=True)
+            print("    saved checkpoint to '{}'".format(path))
+
+        import random
+        #main train loop
+        print("calling train loop")
+        try:
+            trloop.train_loop(
+                train_set=conf.train["train_set_fps"],
+                train_fn=train_fn,
+                #train_fn=lambda x, y: random.uniform(0, 1),
+                n_epochs=conf.train["n_epochs"],
+                val_set=conf.train["val_set_fps"],
+                val_fn=test_fn,
+                #val_fn=lambda x, y: {"acc": random.uniform(0, 1), "hue": 10},
+                val_every_its=conf.train["val_every_its"],
+                save_model_fn=save_model_fn,
+                save_every_its=conf.train["save_every_its"],
+                verbose=conf.train["verbose"],
+                print_fn=log.print,
+                batch_gen_kw=conf.train["batch_gen_kw"]
+            )
+        except KeyboardInterrupt:
+            print("Keyboard Interrupt event.")
+
+        #saving model on final state
+        path = os.path.join(out_dir, "checkpoints", "final")
+        print("saving checkpoint to '{}'...".format(path), flush=True)
+        model.save(sess, path, overwrite=True)
 
     print("\ndone.", flush=True)
 

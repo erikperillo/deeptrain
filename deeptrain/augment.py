@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 The MIT License (MIT)
 
@@ -33,22 +31,9 @@ from skimage import transform as skt
 from skimage import filters as skf
 import numpy as np
 
-#mapping of strings to methods
-OPS_MAP = {
-    "rot90": rot90,
-    "rotation": rotation,
-    "shear": shear,
-    "translation": translation,
-    "add_noise": add_noise,
-    "mul_noise": mul_noise,
-    "blur": blur,
-    "identity": identity,
-    "hmirr": hmirr,
-}
-
 def _get_rng(rng):
     if not isinstance(rng, (list, tuple)):
-        rng = (-abs(rng), abs(rng))
+        rng = (rng, rng)
     return rng
 
 def _rot90(arr, reps=1):
@@ -61,7 +46,7 @@ def _rot90(arr, reps=1):
     return arr
 
 def rot90(x, y, reps=1):
-    x, y = _rot90(x, reps), _rot90(y, reps)
+    x, y = _rot90(x, reps), y if y is None else _rot90(y, reps)
     return x, y
 
 def _hmirr(img):
@@ -72,7 +57,7 @@ def _hmirr(img):
     return img[..., ::-1]
 
 def hmirr(x, y):
-    x, y = _hmirr(x), _hmirr(y)
+    x, y = _hmirr(x), y if y is None else _hmirr(y)
     return x, y
 
 def _rotation(img, angle, **kwargs):
@@ -88,7 +73,8 @@ def _rotation(img, angle, **kwargs):
 
 def rotation(x, y, rng, **kwargs):
     angle = np.random.uniform(*rng)
-    x, y = _rotation(x, angle, **kwargs), _rotation(y, angle, **kwargs)
+    x = _rotation(x, angle, **kwargs)
+    y = y if y is None else _rotation(y, angle, **kwargs)
     return x, y
 
 def _shear(img, shear):
@@ -104,7 +90,7 @@ def _shear(img, shear):
 
 def shear(x, y, rng, **kwargs):
     shear = np.random.uniform(*rng)
-    x, y = _shear(x, shear), _shear(y, shear)
+    x, y = _shear(x, shear), y if y is None else _shear(y, shear)
     return x, y
 
 def _translation(img, transl):
@@ -121,7 +107,7 @@ def _translation(img, transl):
 def translation(x, y, rng):
     h, w = x.shape[-2:]
     transl = (int(np.random.uniform(*rng)*w), int(np.random.uniform(*rng)*h))
-    x, y = _translation(x, transl), _translation(y, transl)
+    x, y = _translation(x, transl), y if y is None else _translation(y, transl)
     return x, y
 
 def _add_noise(img, noise):
@@ -161,60 +147,13 @@ def _blur(img, sigma):
     img = img.swapaxes(2, 1).swapaxes(1, 0)
     return img
 
-def blur(x, y, rng):
+def blur(x, y, rng=0.5):
     sigma = np.random.uniform(*rng)
-    _x = x.copy()
     x, y = _blur(x, sigma), y
     return x, y
 
 def identity(x, y):
     return x, y
-
-_def_ops = [
-    ("blur", 0.15, {"rng": (0.5, 1.0)}),
-    ("translation", 0.15, {"rng": (-0.1, 0.1)}),
-    ("rotation", 0.15, {"rng": (-15, 15)}),
-    ("shear", 0.15, {"rng": (-0.15, 0.15)}),
-    ("add_noise", 0.15, {"rng": (-0.06, 0.06)}),
-    ("mul_noise", 0.15, {"rng": (0.9, 1.1)}),
-]
-
-augm_args = [
-    [
-        ("identity", 1.0, {}),
-    ],
-
-    [
-        ("rot90", 1.0, {"reps": 1}),
-    ] + _def_ops,
-
-    [
-        ("rot90", 1.0, {"reps": 2}),
-    ] + _def_ops,
-
-    [
-        ("rot90", 1.0, {"reps": 3}),
-    ] + _def_ops,
-
-    [
-        ("hmirr", 1.0, {}),
-    ] + _def_ops,
-
-    [
-        ("hmirr", 1.0, {}),
-        ("rot90", 1.0, {"reps": 1}),
-    ] + _def_ops,
-
-    [
-        ("hmirr", 1.0, {}),
-        ("rot90", 1.0, {"reps": 2}),
-    ] + _def_ops,
-
-    [
-        ("hmirr", 1.0, {}),
-        ("rot90", 1.0, {"reps": 3}),
-    ] + _def_ops,
-]
 
 def _unit_norm(img, minn, maxx, dtype="float32"):
     img = ((img - minn)/(maxx - minn)).astype(dtype)
@@ -224,7 +163,20 @@ def _unit_denorm(img, minn, maxx, dtype="float32"):
     img = (img*(maxx - minn) + minn).astype(dtype)
     return img
 
-def augment(xy, op_seqs, add_iff_op=True):
+#mapping of strings to methods
+OPS_MAP = {
+    "rot90": rot90,
+    "rotation": rotation,
+    "shear": shear,
+    "translation": translation,
+    "add_noise": add_noise,
+    "mul_noise": mul_noise,
+    "blur": blur,
+    "identity": identity,
+    "hmirr": hmirr,
+}
+
+def augment(xy, op_seqs, apply_on_y=False, add_iff_op=True):
     """
     Performs data augmentation on x, y sample.
 
@@ -254,12 +206,13 @@ def augment(xy, op_seqs, add_iff_op=True):
     x, y = xy
     x_minn, x_maxx, x_dtype = x.min(), x.max(), x.dtype
     x = _unit_norm(x, x_minn, x_maxx, "float32")
-    y_minn, y_maxx, y_dtype = y.min(), y.max(), y.dtype
-    y = _unit_norm(y, y_minn, y_maxx, "float32")
+    if apply_on_y:
+        y_minn, y_maxx, y_dtype = y.min(), y.max(), y.dtype
+        y = _unit_norm(y, y_minn, y_maxx, "float32")
 
     #applying sequences
     for op_seq in op_seqs:
-        _x, _y = x.copy(), y.copy()
+        _x, _y = x.copy(), y.copy() if apply_on_y else None
 
         some_op = False
         #applying sequence of operations
@@ -272,7 +225,8 @@ def augment(xy, op_seqs, add_iff_op=True):
         #adding sample to augm list
         if some_op or not add_iff_op:
             _x = _unit_denorm(_x, x_minn, x_maxx, x_dtype)
-            _y = _unit_denorm(_y, y_minn, y_maxx, y_dtype)
-            augm.append((_x, _y))
+            if apply_on_y:
+                _y = _unit_denorm(_y, y_minn, y_maxx, y_dtype)
+            augm.append((_x, _y if apply_on_y else y))
 
     return augm

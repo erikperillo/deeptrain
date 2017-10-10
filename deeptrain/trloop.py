@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 The MIT License (MIT)
 
@@ -235,12 +233,12 @@ def train_loop(
     for epoch in _inf_gen():
         #checking stopping
         if n_epochs is not None and epoch >= n_epochs:
-            warn("\nWARNING: maximum number of epochs reached")
+            warn("\n[warning] maximum number of epochs reached")
             end_reason = "n_epochs"
             return end_reason
 
-        info("on epoch {}/{} (time so far: {})".format(
-            epoch+1, _str(n_epochs), _str_fmt_time(time.time() - start_time)))
+        info("{}/{} epochs (time so far: {})".format(
+            epoch, _str(n_epochs), _str_fmt_time(time.time() - start_time)))
 
         #dictionary in format metric: value
         loss_sum = 0
@@ -257,21 +255,21 @@ def train_loop(
             #validation every #step
             if val_every_its is not None and (i+1)%val_every_its == 0:
                 metrics = val_fn(bx, by)
-                _print("    [batch {}] metrics: {}".format(
-                    i+1, _str_fmt_dct(metrics)))
+                info("    [batch {}] metrics: {}".format(
+                    i+1, _str_fmt_dct(metrics)), 16*" ")
 
             #saving model
             if save_every_its is not None and (i+1)%save_every_its == 0:
-                save_model_fn()
+                save_model_fn(epoch, i+1)
+
+        #saving model after epoch
+        save_model_fn(epoch+1, 0)
 
         #printing train loop metrics
         loss_mean = loss_sum/max(i+1, 1)
         info("    train set:", 32*" ")
         info("        processed {} batches".format(i+1))
         info("        mean loss: {}".format(loss_mean))
-
-        #saving model after epoch
-        save_model_fn()
 
         if not validation:
             continue

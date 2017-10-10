@@ -154,7 +154,8 @@ class MetaModel:
         metrics_coll_key_pattern = self.get_coll_key_for_param("metrics")
         for k in graph.get_all_collection_keys():
             if k.startswith(metrics_coll_key_pattern):
-                self.params["metrics"][k] = get_param_from_coll(k, graph=graph)
+                _k = k.split(metrics_coll_key_pattern)[1][1:]
+                self.params["metrics"][_k] = get_param_from_coll(k, graph=graph)
 
     def get_train_fn(self, sess):
         """
