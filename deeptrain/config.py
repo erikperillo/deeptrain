@@ -25,72 +25,12 @@ IN THE SOFTWARE.
 import tensorflow as tf
 from tensorflow.contrib import keras
 import numpy as np
+import os
 import glob
 
+import util
 import augment
-
-#data augmentation default operation sequence to be applied in about every op
-_def_augm_ops = [
-    ("blur", 0.15, {"rng": (0.5, 1.0)}),
-    ("translation", 0.15, {"rng": (-0.1, 0.1)}),
-    ("rotation", 0.15, {"rng": (-15, 15)}),
-    ("shear", 0.15, {"rng": (-0.15, 0.15)}),
-    ("add_noise", 0.15, {"rng": (-0.07, 0.07)}),
-    ("mul_noise", 0.15, {"rng": (0.9, 1.1)}),
-]
-
-"""
-Sequences of operations for data augmentation.
-Each sequence spans a new image and applies operations randomly as defined by
-    their probabilities.
-Each sequence must contain operations in format (op_name, op_prob, op_kwargs).
-"""
-_augment_op_seqs = [
-    [
-        ("identity", 1.0, {}),
-    ],
-
-    #[
-    #    ("rot90", 1.0, {"reps": 1}),
-    #] + _def_augm_ops,
-
-    #[
-    #    ("rot90", 1.0, {"reps": 2}),
-    #] + _def_augm_ops,
-
-    #[
-    #    ("rot90", 1.0, {"reps": 3}),
-    #] + _def_augm_ops,
-
-    #[
-    #    ("hmirr", 1.0, {}),
-    #] + _def_augm_ops,
-
-    #[
-    #    ("hmirr", 1.0, {}),
-    #    ("rot90", 1.0, {"reps": 1}),
-    #] + _def_augm_ops,
-
-    #[
-    #    ("hmirr", 1.0, {}),
-    #    ("rot90", 1.0, {"reps": 2}),
-    #] + _def_augm_ops,
-
-    #[
-    #    ("hmirr", 1.0, {}),
-    #    ("rot90", 1.0, {"reps": 3}),
-    #] + _def_augm_ops,
-]
-
-def _load(fp):
-    xy = np.load(fp)
-    return xy["x"], xy["y"]
-
-def _pre_proc(xy):
-    return xy
-
-def _augment(xy):
-    return augment.augment(xy, _augment_op_seqs, apply_on_y=False)
+import predictfuncs
 
 def _build_graph():
     params = {}
@@ -150,10 +90,76 @@ model = {
     "build_graph_fn": _build_graph,
 }
 
+#data augmentation default operation sequence to be applied in about every op
+_def_augm_ops = [
+    ("blur", 0.15, {"rng": (0.5, 1.0)}),
+    ("translation", 0.15, {"rng": (-0.1, 0.1)}),
+    ("rotation", 0.15, {"rng": (-15, 15)}),
+    ("shear", 0.15, {"rng": (-0.15, 0.15)}),
+    ("add_noise", 0.15, {"rng": (-0.07, 0.07)}),
+    ("mul_noise", 0.15, {"rng": (0.9, 1.1)}),
+]
+
+"""
+Sequences of operations for data augmentation.
+Each sequence spans a new image and applies operations randomly as defined by
+    their probabilities.
+Each sequence must contain operations in format (op_name, op_prob, op_kwargs).
+"""
+_augment_op_seqs = [
+    [
+        ("identity", 1.0, {}),
+    ],
+
+    #[
+    #    ("rot90", 1.0, {"reps": 1}),
+    #] + _def_augm_ops,
+
+    #[
+    #    ("rot90", 1.0, {"reps": 2}),
+    #] + _def_augm_ops,
+
+    #[
+    #    ("rot90", 1.0, {"reps": 3}),
+    #] + _def_augm_ops,
+
+    #[
+    #    ("hmirr", 1.0, {}),
+    #] + _def_augm_ops,
+
+    #[
+    #    ("hmirr", 1.0, {}),
+    #    ("rot90", 1.0, {"reps": 1}),
+    #] + _def_augm_ops,
+
+    #[
+    #    ("hmirr", 1.0, {}),
+    #    ("rot90", 1.0, {"reps": 2}),
+    #] + _def_augm_ops,
+
+    #[
+    #    ("hmirr", 1.0, {}),
+    #    ("rot90", 1.0, {"reps": 3}),
+    #] + _def_augm_ops,
+]
+
+def _load(fp_or_fps):
+    xy = np.load(fp_or_fps)
+    return xy["x"].reshape((1, 28, 28)), xy["y"]
+
+def _pre_proc(x, y=None):
+    if y is not None:
+        return x, y
+    return x
+
+def _augment(xy):
+    return augment.augment(xy, _augment_op_seqs, apply_on_y=False)
+
 train = {
     "out_dir_basedir": "/home/erik/random/traindata",
 
-    "pre_trained_model_path": "/home/erik/random/traindata/train_12/checkpoints/epoch-1_it-0",
+    "pre_trained_model_path":\
+        "/home/erik/random/traindata/train_12/checkpoints/epoch-1_it-0",
 
     "train_set_fps": glob.glob("/home/erik/random/mnist/train/*.npz")[:2000],
 
@@ -177,4 +183,59 @@ train = {
         "fetch_thr_pre_proc_fn": _pre_proc,
         "max_augm_factor": len(_augment_op_seqs),
     },
+}
+
+def _predict(x, train_fn):
+    x = x.reshape((1, 28, 28))
+    x = _pre_proc(x)
+    x = x.reshape((1, ) + x.shape)
+
+    y_pred = train_fn(x)
+
+    return y_pred
+
+def _get_debug_img(x, y=None):
+    pass
+
+def _predict_load(fp):
+    x = np.load(fp)
+    return x
+
+def _save_x(x, preds_dir, name):
+    fp = util.uniq_filepath(preds_dir, name + "_x", ext=".npy")
+    np.save(fp, x)
+
+def _save_y_pred(y_pred, preds_dir, name):
+    fp = util.uniq_filepath(preds_dir, name + "_y-pred", ext=".npy")
+    np.save(fp, y_pred)
+
+def _save_y_true(y_true, preds_dir, name):
+    fp = util.uniq_filepath(preds_dir, name + "_y-true", ext=".npy")
+    np.save(fp, y_true)
+
+predict = {
+    "rand_seed": 42,
+
+    "input_fps": glob.glob("/home/erik/random/mnist/val/*.npz")[:10],
+
+    "shuffle_input_fps": True,
+
+    "model_path": "/home/erik/random/traindata/train_18/checkpoints/final",
+
+    "preds_save_dir_basedir": "/home/erik/random/preds",
+
+    "load_fn": _load,
+
+    "predict_fn": _predict,
+
+    "save_tables": True,
+
+    "with_trues": True,
+
+    "max_pred_points": 9999,
+    "max_n_preds_save": 30,
+
+    "save_x_fn": _save_x,
+    "save_pred_fn": _save_y_pred,
+    "save_true_fn": _save_y_true,
 }

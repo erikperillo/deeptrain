@@ -103,7 +103,7 @@ def fetch(fps, q, load_chunk_size, max_n_samples,
                 augm_xy = augment_fn(xy)
                 #pre-processing
                 for i, xy in enumerate(augm_xy):
-                    augm_xy[i] = pre_proc_fn(xy)
+                    augm_xy[i] = pre_proc_fn(*xy)
                 #putting to samples list
                 samples.extend(augm_xy)
 

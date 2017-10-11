@@ -61,7 +61,7 @@ def uniq_filename(dir_path, pattern, ext=""):
              os.path.exists(os.path.join(dir_path, f))]
     num = len([f for f in files if f.startswith(pattern)])
 
-    filename = pattern + (("_" + str(num)) if num else "") + ext
+    filename = pattern + (("-" + str(num)) if num else "") + ext
 
     return filename
 
