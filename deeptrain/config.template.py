@@ -116,6 +116,10 @@ _augment_op_seqs = [
         ("identity", 1.0, {}),
     ],
 
+    [
+        ("identity", 1.0, {}),
+    ] + _def_augm_ops,
+
     #[
     #    ("rot90", 1.0, {"reps": 1}),
     #] + _def_augm_ops,
@@ -166,14 +170,14 @@ train = {
     "out_dir_basedir": "/home/erik/random/traindata",
 
     #path to directory containing data needed by tensorflow's SavedModel
-    "pre_trained_model_path":\
-        "/home/erik/random/traindata/train_12/checkpoints/epoch-1_it-0",
+    #can be None
+    "pre_trained_model_path": None,
 
     #list with filepaths of train files
     "train_set_fps": glob.glob("/home/erik/random/mnist/train/*.npz")[:2000],
 
     #list with filepaths of validation files
-    "val_set_fps": glob.glob("/home/erik/random/mnist/val/*.npz"),
+    "val_set_fps": glob.glob("/home/erik/random/mnist/val/*.npz")[:1000],
 
     #number of epochs for training loop. can be None
     "n_epochs": 3,
@@ -184,7 +188,7 @@ train = {
 
     #save checkpoint with graph/weights every save_every_its besides epochs.
     #can be None
-    "save_every_its": None,
+    "save_every_its": "/home/erik/random/traindata/train-22/checkpoints/final",
 
     #verbosity
     "verbose": 2,
@@ -207,14 +211,14 @@ train = {
         "fetch_thr_load_chunk_size": 10,
 
         #function to return tuple (x, y_true) given filepath
-        "fetch_thr_load_fn": _train_load,
+        "fetch_thr_load_fn": _load,
 
         #function to return list of tuples [(_x, _y), ...] given (x, y) tuple
-        "fetch_thr_augment_fn": _train_augment,
+        "fetch_thr_augment_fn": _augment,
 
         #function to return x (optionally (x, y))
         #given x (optionally y as second argument)
-        "fetch_thr_pre_proc_fn": _train_pre_proc,
+        "fetch_thr_pre_proc_fn": _pre_proc,
 
         #the maximum factor by which number of samples will be increased
         #due to data augmentation
