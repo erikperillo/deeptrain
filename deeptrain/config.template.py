@@ -86,7 +86,12 @@ def _build_graph():
 
     return params
 
+#arguments for load
 model = {
+    #this function builds the graph of the model.
+    #it receives an optional (tensorflow) pre-graph argument or create a new.
+    #it must return a dictionary mapping all the model parameters defined
+    #in model.MetaModel.PARAMS_KEYS.
     "build_graph_fn": _build_graph,
 }
 
@@ -155,32 +160,64 @@ def _pre_proc(x, y=None):
 def _augment(xy):
     return augment.augment(xy, _augment_op_seqs, apply_on_y=False)
 
+#arguments for train routine
 train = {
+    #base directory where new directory with train data will be created
     "out_dir_basedir": "/home/erik/random/traindata",
 
+    #path to directory containing data needed by tensorflow's SavedModel
     "pre_trained_model_path":\
         "/home/erik/random/traindata/train_12/checkpoints/epoch-1_it-0",
 
+    #list with filepaths of train files
     "train_set_fps": glob.glob("/home/erik/random/mnist/train/*.npz")[:2000],
 
+    #list with filepaths of validation files
     "val_set_fps": glob.glob("/home/erik/random/mnist/val/*.npz"),
 
+    #number of epochs for training loop. can be None
     "n_epochs": 3,
 
+    #measure metrics every val_every_its in addition to every epoch end
+    #can be None
     "val_every_its": 200,
 
+    #save checkpoint with graph/weights every save_every_its besides epochs.
+    #can be None
     "save_every_its": None,
 
+    #verbosity
     "verbose": 2,
 
+    #arguments to be provided by trloop.batch_gen function
     "batch_gen_kw": {
+        #size of batch to be fed to model
         "batch_size": 4,
+
+        #number of fetching threads for data loading/pre-processing/augmentation
         "n_threads": 3,
+
+        #maximum number of samples to be loaded at a time.
+        #the actual number may be slightly larger due to rounding.
         "max_n_samples": 1000,
+
+        #the fetching threads loads a chunk of this size before augmentation
+        #and pre-processing. 
+        #this spreads out the augmented versions of an image in the feeding line
         "fetch_thr_load_chunk_size": 10,
-        "fetch_thr_load_fn": _load,
-        "fetch_thr_augment_fn": _augment,
-        "fetch_thr_pre_proc_fn": _pre_proc,
+
+        #function to return tuple (x, y_true) given filepath
+        "fetch_thr_load_fn": _train_load,
+
+        #function to return list of tuples [(_x, _y), ...] given (x, y) tuple
+        "fetch_thr_augment_fn": _train_augment,
+
+        #function to return x (optionally (x, y))
+        #given x (optionally y as second argument)
+        "fetch_thr_pre_proc_fn": _train_pre_proc,
+
+        #the maximum factor by which number of samples will be increased
+        #due to data augmentation
         "max_augm_factor": len(_augment_op_seqs),
     },
 }
@@ -189,13 +226,8 @@ def _predict(x, train_fn):
     x = x.reshape((1, 28, 28))
     x = _pre_proc(x)
     x = x.reshape((1, ) + x.shape)
-
     y_pred = train_fn(x)
-
     return y_pred
-
-def _get_debug_img(x, y=None):
-    pass
 
 def _predict_load(fp):
     x = np.load(fp)
@@ -213,29 +245,49 @@ def _save_y_true(y_true, preds_dir, name):
     fp = util.uniq_filepath(preds_dir, name + "_y-true", ext=".npy")
     np.save(fp, y_true)
 
+#arguments for predict routine
 predict = {
+    #random seed to be used, can be None
     "rand_seed": 42,
 
+    #list of input filepaths containing x values (optionally (x, y_true) tuples)
     "input_fps": glob.glob("/home/erik/random/mnist/val/*.npz")[:10],
 
+    #whether or not shuffle list of input filepaths
     "shuffle_input_fps": True,
 
+    #path to directory containing meta-graph and weights for model
     "model_path": "/home/erik/random/traindata/train_18/checkpoints/final",
 
+    #base dir where new preds directory will be created
     "preds_save_dir_basedir": "/home/erik/random/preds",
 
+    #load function that, given a filepath, returns x
+    #(or (x, y_true) tuple if argument 'with_trues' is set to True)
     "load_fn": _load,
 
+    #predict function
+    #given x and pred_fn returned by model.MetaModel.get_pred_fn, returns y_pred
     "predict_fn": _predict,
 
+    #if true, creates table.npz, containing x_fps, y_pred (and possibly y_true)
     "save_tables": True,
 
+    #if true, tries to load true values with load_fn
     "with_trues": True,
 
+    #maximum prediction data points to be stored, can be None
     "max_pred_points": 9999,
+
+    #maximum number of preds to save, can be None
     "max_n_preds_save": 30,
 
+    #function to save x, given x, base_dir (always exists) and pattern 'name'
     "save_x_fn": _save_x,
+
+    #function to save pred, given x, base_dir (always exists) and pattern 'name'
     "save_pred_fn": _save_y_pred,
+
+    #function to save true, given x, base_dir (always exists) and pattern 'name'
     "save_true_fn": _save_y_true,
 }

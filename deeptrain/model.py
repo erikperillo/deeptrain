@@ -74,12 +74,19 @@ class MetaModel:
     NAME = "model"
 
     PARAMS_KEYS = {
+        #input placeholder tensor
         "x",
+        #prediction placeholder tensor
         "y_pred",
+        #placeholder for true value of y
         "y_true",
+        #loss symbolic function
         "loss",
+        #update symbolic function
         "update",
+        #variable that is True/1 if training phase and 0 otherwise
         "learning_phase",
+        #dictionary in format metric_name: metric_symbolic_expression
         "metrics",
     }
 
